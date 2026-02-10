@@ -24,7 +24,7 @@ Verify agent runs locally as HTTP server.
 
 Call tools to collect deployment information:
 
-- `aitk-list_foundry_models` - get user's Foundry project, subscription, and resource group
+- `aitk-list_foundry_models` - get user's Foundry project, subscription, and resource group. If this tool is not available, ask user directly for project name, subscription, and resource group.
 - Check if `Dockerfile` and `requirements.txt` exist in project directory
 
 **Step 3: Collect Missing Information**
@@ -54,13 +54,12 @@ RUN if [ -f requirements.txt ]; then \
 
 EXPOSE 8088
 
-ENV ASPNETCORE_URLS=http://+:8088
-ENV ASPNETCORE_ENVIRONMENT=Production
-
 CMD ["python", "<ENTRYPOINT_FILE>"]
 ```
 
 Replace `<ENTRYPOINT_FILE>` with user's specified entry point.
+
+> **Note:** If you decide to add `.env` to `.dockerignore`, confirm with the user which environment variables need to be included in the Docker container.
 
 **Step 5: Configure ACR**
 
@@ -80,7 +79,13 @@ IMAGE_NAME="$ACR_NAME.azurecr.io/$AGENT_NAME:$IMAGE_TAG"
 az acr build --registry $ACR_NAME --image $IMAGE_NAME --subscription $SUB_ID --source-acr-auth-id "[caller]" <SOURCE_DIR>
 ```
 
-**Important**: For ABAC-mode ACR, `--source-acr-auth-id "[caller]"` is required.
+**Important**: `--source-acr-auth-id "[caller]"` is required.
+
+**Note**: `az acr build` streams logs from the remote build. If the CLI crashes while displaying logs (e.g., `UnicodeEncodeError` on Windows), the remote build continues running independently. Do
+  not assume failure. Check actual build status with:
+  ```bash
+  az acr task show-run -r $ACR_NAME --run-id <run-id> --query status
+  ```
 
 **Step 7: Deploy Agent Version**
 
