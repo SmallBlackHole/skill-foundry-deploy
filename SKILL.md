@@ -22,20 +22,18 @@ Verify agent runs locally as HTTP server.
 
 **Step 2: Gather Context**
 
-Call tools to collect deployment information:
-
-- `aitk-list_foundry_models` - get user's Foundry project, subscription, and resource group. If this tool is not available, ask user directly for project name, subscription, and resource group.
-- Check if `Dockerfile` and `requirements.txt` exist in project directory
-
-**Step 3: Collect Missing Information**
-
-Ask user for information not available from tools:
+Ask user for information not already known:
+- `SUB_ID` - Azure Subscription ID
+- `RG_NAME` - Resource Group name
+- `FOUNDRY_RESOURCE` - Azure AI Foundry resource name
+- `PROJECT_NAME` - Foundry project name
 - `AGENT_NAME` - name for the hosted agent
-- `ENTRYPOINT` - main Python file to run, e.g., `app.py` (if Dockerfile needs to be generated)
+- `ENTRYPOINT` - main file to run, e.g., `app.py` (if Dockerfile needs to be generated)
 
-**Step 4: Prepare Dockerfile**
 
-If no `Dockerfile` exists, generate from template:
+**Step 3: Prepare Dockerfile**
+
+If no Dockerfile exists, generate one. Below is a Python example:
 
 ```dockerfile
 FROM python:3.11-slim
@@ -61,7 +59,7 @@ Replace `<ENTRYPOINT_FILE>` with user's specified entry point.
 
 > **Note:** If you decide to add `.env` to `.dockerignore`, confirm with the user which environment variables need to be included in the Docker container.
 
-**Step 5: Configure ACR**
+**Step 4: Configure ACR**
 
 **If ACR exists**: Use existing ACR directly, skip role assignment.
 
@@ -69,12 +67,13 @@ Replace `<ENTRYPOINT_FILE>` with user's specified entry point.
 - **Container Registry Repository Reader** to Foundry project managed identity
 - **Container Registry Repository Writer** to current user
 
-**Step 6: Build and Push Container Image**
+**Step 5: Build and Push Container Image**
 
 Use ACR remote build (no local Docker required):
 
+1. Generate a random alphanumeric image tag (12 characters)
+2. Build and push the image:
 ```bash
-IMAGE_TAG=$(cat /dev/urandom | tr -dc 'a-z0-9' | head -c 12)
 IMAGE_NAME="$ACR_NAME.azurecr.io/$AGENT_NAME:$IMAGE_TAG"
 az acr build --registry $ACR_NAME --image $IMAGE_NAME --subscription $SUB_ID --source-acr-auth-id "[caller]" <SOURCE_DIR>
 ```
@@ -87,7 +86,11 @@ az acr build --registry $ACR_NAME --image $IMAGE_NAME --subscription $SUB_ID --s
   az acr task show-run -r $ACR_NAME --run-id <run-id> --query status
   ```
 
-**Step 7: Deploy Agent Version**
+**Step 6: Deploy Agent Version**
+
+Ask the user for resource allocation preferences:
+- `CPU` - CPU cores for the agent container (default: `0.5`)
+- `MEMORY` - Memory allocation (default: `1Gi`)
 
 Get access token and create agent version:
 
@@ -107,8 +110,8 @@ POST https://$FOUNDRY_RESOURCE.services.ai.azure.com/api/projects/$PROJECT_NAME/
         "container_protocol_versions": [
             { "protocol": "RESPONSES", "version": "v1" }
         ],
-        "cpu": "0.5",
-        "memory": "1Gi",
+        "cpu": "$CPU",
+        "memory": "$MEMORY",
         "image": "$IMAGE_NAME",
         "environment_variables": { "LOG_LEVEL": "debug" }
     }
@@ -117,7 +120,7 @@ POST https://$FOUNDRY_RESOURCE.services.ai.azure.com/api/projects/$PROJECT_NAME/
 
 Record `$AGENT_VERSION` from response.
 
-**Step 8: Start Agent Container**
+**Step 7: Start Agent Container**
 
 ```
 POST https://$FOUNDRY_RESOURCE.services.ai.azure.com/api/projects/$PROJECT_NAME/agents/$AGENT_NAME/versions/$AGENT_VERSION/containers/default:start?api-version=2025-05-15-preview
@@ -131,7 +134,7 @@ POST https://$FOUNDRY_RESOURCE.services.ai.azure.com/api/projects/$PROJECT_NAME/
 }
 ```
 
-**Step 9: Validate Deployment**
+**Step 8: Validate Deployment**
 
 Test the agent:
 
@@ -162,7 +165,7 @@ POST https://$FOUNDRY_RESOURCE.services.ai.azure.com/api/projects/$PROJECT_NAME/
 }
 ```
 
-**Step 10: Post-Deployment**
+**Step 9: Post-Deployment**
 
 - Create reusable deployment script in project root
 - Save deployment summary to `.azure/foundry-deployment-summary.md`
